@@ -82,9 +82,13 @@ class Alphabet(object):
         """
         saving_name = name if name else self.__name
         try:
-            json.dump(self.get_content(), open(os.path.join(output_directory, saving_name + ".json"), 'w'))
+            if not os.path.exists(output_directory):
+                os.makedirs(output_directory)
+
+            json.dump(self.get_content(),
+                      open(os.path.join(output_directory, saving_name + ".json"), 'w'), indent=4)
         except Exception as e:
-            self.logger.warn("Alphabet is not saved: " % repr(e))
+            self.logger.warn("Alphabet is not saved: %s" % repr(e))
 
     def load(self, input_directory, name=None):
         """

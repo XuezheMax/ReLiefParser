@@ -4,9 +4,8 @@ import re
 import random
 import numpy as np
 from tensorflow.python.platform import gfile
-
-from alphabet import Alphabet
 from reader import Reader
+from alphabet import Alphabet
 from .. import utils
 
 # Special vocabulary symbols - we always put them at the start.
@@ -65,6 +64,10 @@ def create_alphabets(alphabet_directory, data_paths, max_vocabulary_size, normal
                         vocab[word] = 1
 
         vocab_list = _START_VOCAB + sorted(vocab, key=vocab.get, reverse=True)
+        logger.info("Total Vocabulary Size: %d" % len(vocab_list))
+        logger.info("POS Alphabet Size: %d" % pos_alphabet.size())
+        logger.info("Type Alphabet Size: %d" % type_alphabet.size())
+
         if len(vocab_list) > max_vocabulary_size:
             vocab_list = vocab_list[:max_vocabulary_size]
         for word in vocab_list:
@@ -79,6 +82,9 @@ def create_alphabets(alphabet_directory, data_paths, max_vocabulary_size, normal
         pos_alphabet.load(alphabet_directory)
         type_alphabet.load(alphabet_directory)
 
+    word_alphabet.close()
+    pos_alphabet.close()
+    type_alphabet.close()
     return word_alphabet, pos_alphabet, type_alphabet
 
 
@@ -102,6 +108,8 @@ def read_data(source_path, word_alphabet, pos_alphabet, type_alphabet, max_size=
 
         inst = reader.getNext(normalize_digits)
     reader.close()
+    logger.info("Total number of data: %d" % counter)
+    return data
 
 
 def get_batch(data, batch_size):
@@ -119,10 +127,10 @@ def get_batch(data, batch_size):
 
     bucket_length = _buckets[bucket_id]
 
-    wid_inputs = np.empty([batch_size, bucket_length], dtype=np.float32)
-    pid_inputs = np.empty([batch_size, bucket_length], dtype=np.float32)
-    hid_inputs = np.empty([batch_size, bucket_length], dtype=np.float32)
-    tid_inputs = np.empty([batch_size, bucket_length], dtype=np.float32)
+    wid_inputs = np.empty([batch_size, bucket_length], dtype=np.int32)
+    pid_inputs = np.empty([batch_size, bucket_length], dtype=np.int32)
+    hid_inputs = np.empty([batch_size, bucket_length], dtype=np.int32)
+    tid_inputs = np.empty([batch_size, bucket_length], dtype=np.int32)
 
     masks = np.zeros([batch_size, bucket_length], dtype=np.float32)
 
@@ -144,4 +152,4 @@ def get_batch(data, batch_size):
         # masks
         masks[b, :inst_size] = 1.0
 
-    return (wid_inputs, pid_inputs, hid_inputs, tid_inputs, masks)
+    return wid_inputs, pid_inputs, hid_inputs, tid_inputs, masks
