@@ -95,3 +95,5 @@ class Alphabet(object):
         """
         loading_name = name if name else self.__name
         self.__from_json(json.load(open(os.path.join(input_directory, loading_name + ".json"))))
+        self.next_index = len(self.instances) + 1
+        self.keep_growing = False
