@@ -2,7 +2,6 @@ __author__ = 'max'
 
 import logging
 import sys
-import gzip
 
 
 def get_logger(name, level=logging.INFO, handler=sys.stdout,
@@ -16,4 +15,3 @@ def get_logger(name, level=logging.INFO, handler=sys.stdout,
     logger.addHandler(stream_handler)
 
     return logger
-
