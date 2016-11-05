@@ -27,11 +27,11 @@ class Environment(object):
         # each act is between [0, 2n-1]
         assert acts.shape == (self.__batch_size,)
         assert (acts >= 0).all()
-        assert (acts < 2 * self.__sizes).all()
+        assert (acts < 2 * self.__length).all()
 
         # [0, n-1] as left acts, [n, 2n-1] as right acts
-        is_lefts = acts < self.__sizes
-        heads = acts % self.__sizes
+        is_lefts = acts < self.__length
+        heads = acts % self.__length
         children = np.zeros_like(heads)
         rewards = np.zeros_like(heads, dtype=np.float32)
 
@@ -50,10 +50,13 @@ class Environment(object):
                 if child >= 0:
                     self.__marks[b, child] = 0
 
-        return (rewards, heads, children)
+        return rewards, heads, children
 
     def __find_left(self, b, pos):
         left = -1
+        if pos >= self.__sizes[b]:
+            return left
+
         for i in range(pos - 1, -1, -1):
             if self.__marks[b, i]:
                 left = i
