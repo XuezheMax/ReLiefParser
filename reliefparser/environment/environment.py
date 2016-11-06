@@ -53,6 +53,9 @@ class Environment(object):
         indexes, lefts, rights = self.get_indexes()
         return rewards, heads, children, indexes, lefts, rights
 
+    def get_masks(self):
+        return self.__marks
+    
     def get_indexes(self):
         lefts = np.zeros([self.__batch_size, self.__length], dtype=np.int32)
         rights = np.zeros_like(lefts)
