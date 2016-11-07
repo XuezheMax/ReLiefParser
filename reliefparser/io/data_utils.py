@@ -148,7 +148,7 @@ def get_batch(data, batch_size):
         tid_inputs[b, inst_size:] = PAD_ID
         # heads
         hid_inputs[b, :inst_size] = hids
-        hid_inputs[b, inst_size:] = 0
+        hid_inputs[b, inst_size:] = -1
         # masks
         masks[b, :inst_size] = 1.0
 
