@@ -18,9 +18,9 @@ class PointerNet(object):
         self.enc_esize = esize
         self.enc_hsize = hsize
 
-        self.dec_hsize = hsize
-        self.dec_isize = self.enc_hsize * 2  # concatenation of bidirectional RNN
         self.dec_msize = self.enc_hsize * 2  # concatenation of bidirectional RNN
+        self.dec_isize = kwargs.get('dec_isize', self.enc_hsize)
+        self.dec_hsize = hsize
         self.dec_asize = asize
 
         self.buckets = buckets
@@ -28,12 +28,20 @@ class PointerNet(object):
         self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize)
         self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.buckets[-1])
 
-    def __call__(self, enc_input, dec_inputs, child_indices, head_indices, rewards):
+    def __call__(self, enc_input, dec_input_indices, child_indices, head_indices, rewards):
+        batch_size = tf.shape(enc_input)[0]
         # forward computation graph
         with tf.variable_scope(self.scope):
+            # encoder output
             enc_memory, _ = self.encoder(enc_input)
-            dec_hiddens, dec_actions, dec_act_probs = self.decoder(dec_inputs, enc_memory, child_indices, head_indices, rewards)
 
+            # padding the memory with a dummy (all-zero) vector at the end
+            enc_memory = tf.pad(enc_memory, [[0,0],[0,1],[0,0]])
+
+            # decoder
+            dec_hiddens, dec_actions, dec_act_probs = self.decoder(dec_input_indices, enc_memory, child_indices, head_indices, rewards)
+
+            # cost
             costs = []
             for act_prob, reward in zip(dec_act_probs, rewards):
                 costs.append(tf.reduce_sum(act_prob * reward))
@@ -55,7 +63,7 @@ if __name__ == '__main__':
     esize = 256
     hsize = 256
     asize = 256
-    isize = hsize * 2
+    isize = 333
 
     buckets = [10]#, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
     max_len = buckets[-1]
@@ -65,7 +73,7 @@ if __name__ == '__main__':
     ####################
     
     # model initialization
-    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets)
+    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
 
     # placeholders
     enc_input = tf.placeholder(dtype=tf.int32, shape=[None, None], name='enc_input')
@@ -73,7 +81,7 @@ if __name__ == '__main__':
     inputs, rewards = [], []
     cindices, hindices = [], []
     for i in range(max_len):
-        inputs.append(tf.placeholder(dtype=tf.float32, shape=[None, isize], name='input_%d'%i))
+        inputs.append(tf.placeholder(dtype=tf.int32, shape=[None, 2], name='input_%d'%i))
         rewards.append(tf.placeholder(dtype=tf.float32, name='reward_%d'%i))
         cindices.append(tf.placeholder(dtype=tf.int32, name='child_indice_%d'%i))
         hindices.append(tf.placeholder(dtype=tf.int32, name='head_indice_%d'%i))
@@ -101,7 +109,7 @@ if __name__ == '__main__':
 
     # get from evironment
     def action(output):
-        input = np.ones((bsize, isize)) * 0.1
+        input  = np.repeat(np.array([3,6]).astype(np.int32).reshape(1, -1), bsize, axis=0)
         reward = np.ones(output.shape)
         h_indices = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
         c_indices = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
@@ -112,7 +120,7 @@ if __name__ == '__main__':
         
         enc_input_np = np.random.randint(0, vsize, size=[bsize, lsize]).astype(np.int32)
 
-        init_input_np = np.random.randn(bsize, isize).astype(np.float32)
+        init_input_np = np.repeat(np.arange(2).astype(np.int32).reshape(1, -1), bsize, axis=0)
         init_hidx_np = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
         init_cidx_np = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
 

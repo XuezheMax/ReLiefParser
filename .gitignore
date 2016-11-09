@@ -108,3 +108,6 @@ ENV/
 *.iml
 *.sublime-project
 *.sublime-workspace
+
+# MAC
+.DS_Store
