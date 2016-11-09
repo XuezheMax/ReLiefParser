@@ -31,14 +31,16 @@ class Decoder(object):
         def step(hid_tm, in_idx_t, hd_idx_t, cd_idx_t):
             # combine head and child as the input
             flat_in_idx = base_idx + in_idx_t
-            inp_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_in_idx)
+            inp_vecs = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_in_idx)
 
             weight_combine = tf.get_variable(name='weight_combine', shape=[2*self.msize, self.isize],
                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
             bias_combine   = tf.get_variable(name='bias_combine', shape=[self.isize],
                                              initializer=tf.constant_initializer(value=0.0))
 
-            inp_t = tf.tanh(tf.matmul(tf.reshape(inp_mem, [batch_size, 2*self.msize]), weight_combine) + bias_combine)
+            # TODO: discuss with Max about the model design here
+            inp_vecs = tf.reshape(inp_vecs, [batch_size, 2*self.msize])
+            inp_t = tf.tanh(tf.matmul(inp_vecs, weight_combine) + bias_combine)
 
             # perform rnn step
             hid_t, _ = self.rnn_cell(inp_t, hid_tm)

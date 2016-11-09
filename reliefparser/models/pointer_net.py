@@ -71,7 +71,7 @@ if __name__ == '__main__':
     ####################
     # symbolic section
     ####################
-    
+
     # model initialization
     pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
 
@@ -117,7 +117,7 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
-        
+
         enc_input_np = np.random.randint(0, vsize, size=[bsize, lsize]).astype(np.int32)
 
         init_input_np = np.repeat(np.arange(2).astype(np.int32).reshape(1, -1), bsize, axis=0)
@@ -137,7 +137,7 @@ if __name__ == '__main__':
         for i in range(lsize):
             # t_i = time()
             feed_dict.update({inputs[i]:inputs_np[i], hindices[i]:hindices_np[i], cindices[i]:cindices_np[i]})
-            
+
             h_i_np, a_i_np = sess.run([dec_hiddens[i], dec_actions[i]], feed_dict=feed_dict)
 
             hiddens_np.append(h_i_np)
@@ -149,7 +149,7 @@ if __name__ == '__main__':
             cindices_np.append(cidx_np)
             # print i, time() - t_i
         print time() - t
-        
+
         t = time()
         feed_dict.update({go:go_np for go, go_np in zip(rewards, rewards_np)})
         grad_w_np_2 = sess.run(grad_w, feed_dict=feed_dict)
@@ -161,7 +161,7 @@ if __name__ == '__main__':
         inputs_np.append(init_input_np)
         hindices_np.append(init_hidx_np)
         cindices_np.append(init_cidx_np)
-        
+
         t = time()
         handle = sess.partial_run_setup(all_fetches+grad_w, all_feeds)
 
@@ -197,10 +197,10 @@ if __name__ == '__main__':
             if not np.allclose(g1, g2):
                 print 'g1', np.max(g1), np.min(g1)
                 print 'g2', np.max(g2), np.min(g2)
-            else: 
+            else:
                 print 'Pass: g1 = g2', g1.shape, g2.shape
                 if np.allclose(g1, np.zeros_like(g1)):
                     print 'Fail: g1 != 0', np.max(g1), np.min(g1)
-                    
+
                 if np.allclose(g2, np.zeros_like(g2)):
                     print 'Fail: g2 != 0', np.max(g2), np.min(g2)
