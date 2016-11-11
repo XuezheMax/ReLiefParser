@@ -10,6 +10,8 @@ class Decoder(object):
 
         self.name  = kwargs.get('name', self.__class__.__name__)
         self.scope = kwargs.get('scope', self.name)
+
+        self.epsilon = kwargs.get('epsilon', 0.05)
         
         self.isize = isize
         self.hsize = hsize
@@ -20,21 +22,22 @@ class Decoder(object):
 
         self.rnn_cell = tf.nn.rnn_cell.GRUCell(self.hsize)
 
-    def __call__(self, input_indices, memory, child_indices, head_indices, rewards):
+    def __call__(self, input_indices, memory, valid_indices, left_indices, right_indices, rewards, init_hidden=None):
         batch_size = tf.shape(input_indices[0])[0]
-        init_hidden = self.rnn_cell.zero_state(batch_size, dtype=tf.float32)
+        if init_hidden is None:
+            init_hidden = self.rnn_cell.zero_state(batch_size, dtype=tf.float32)
 
         # variables invariant across steps
         mem_shape = tf.shape(memory)
         base_idx = tf.expand_dims(tf.range(mem_shape[0]) * mem_shape[1], [1])
 
-        def step(hid_tm, in_idx_t, hd_idx_t, cd_idx_t):
-            # combine head and child as the input
+        def step(hid_tm, in_idx_t, vd_idx_t, lt_idx_t, rt_idx_t):
+            # combine previsouly predicted head and child as the current input
             flat_in_idx = base_idx + in_idx_t
             inp_vecs = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_in_idx)
 
             weight_combine = tf.get_variable(name='weight_combine', shape=[2*self.msize, self.isize],
-                                             initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                             initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             bias_combine   = tf.get_variable(name='bias_combine', shape=[self.isize],
                                              initializer=tf.constant_initializer(value=0.0))
 
@@ -45,52 +48,58 @@ class Decoder(object):
             # perform rnn step
             hid_t, _ = self.rnn_cell(inp_t, hid_tm)
 
-            # head memory & child memory
-            flat_hd_idx = base_idx + hd_idx_t
-            hd_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_hd_idx)
-            flat_cd_idx = base_idx + cd_idx_t
-            cd_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_cd_idx)
+            # valid memory, left memory & right memory
+            flat_vd_idx = base_idx + vd_idx_t
+            flat_lt_idx = base_idx + lt_idx_t
+            flat_rt_idx = base_idx + rt_idx_t
+
+            vd_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_vd_idx)  # valid memory
+            lt_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_lt_idx)  # left  memory
+            rt_mem = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_rt_idx)  # right memory
 
             # attention vec left
             weight_hid_left = tf.get_variable(name='weight_hidden_left', shape=[self.hsize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_hd_left  = tf.get_variable(name='weight_head_left', shape=[1, self.msize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_cd_left  = tf.get_variable(name='weight_child_left', shape=[1, self.msize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_left     = tf.get_variable(name='weight_left', shape=[self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             bias_left       = tf.get_variable(name='bias_left', shape=[self.asize],
                                               initializer=tf.constant_initializer(value=0.0))
 
             weight_hid_right = tf.get_variable(name='weight_hidden_right', shape=[self.hsize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_hd_right  = tf.get_variable(name='weight_head_right', shape=[1, self.msize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_cd_right  = tf.get_variable(name='weight_child_right', shape=[1, self.msize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             weight_right     = tf.get_variable(name='weight_right', shape=[self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.02))
+                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
             bias_right       = tf.get_variable(name='bias_right', shape=[self.asize],
                                                initializer=tf.constant_initializer(value=0.0))
 
-            # left-arc score
-            hd_att_left = tf.nn.conv1d(hd_mem, weight_hd_left, 1, 'SAME')
-            cd_att_left = tf.nn.conv1d(cd_mem, weight_cd_left, 1, 'SAME')
+            # left-arc score (head = valid memory, child = left memory)
+            hd_att_left = tf.nn.conv1d(vd_mem, weight_hd_left, 1, 'SAME')
+            cd_att_left = tf.nn.conv1d(lt_mem, weight_cd_left, 1, 'SAME')
             att_left = tf.tanh(tf.expand_dims(tf.matmul(hid_t, weight_hid_left), 1) + 
                                hd_att_left + cd_att_left + bias_left)
             score_left = tf.reduce_sum(att_left * weight_left, [2])
 
-            # right-arc score
-            hd_att_right = tf.nn.conv1d(hd_mem, weight_hd_right, 1, 'SAME')
-            cd_att_right = tf.nn.conv1d(cd_mem, weight_cd_right, 1, 'SAME')
+            # right-arc score (head = valid memory, child = right memory)
+            hd_att_right = tf.nn.conv1d(vd_mem, weight_hd_right, 1, 'SAME')
+            cd_att_right = tf.nn.conv1d(rt_mem, weight_cd_right, 1, 'SAME')
             att_right = tf.tanh(tf.expand_dims(tf.matmul(hid_t, weight_hid_right), 1) + 
                                 hd_att_right + cd_att_right + bias_right)
             score_right = tf.reduce_sum(att_right * weight_right, [2])
             
             # concatenate and softmax
             prob_t = tf.nn.softmax(tf.concat(1, [score_left, score_right]))
-            act_t = tf.to_int32(tf.argmax(prob_t, dimension=1))
+            act_t = tf.cond(tf.random_uniform(shape=[1])[0]>self.epsilon, lambda: tf.argmax(prob_t, dimension=1), lambda: tf.reshape(tf.multinomial(prob_t, 1), [-1]))
+            act_t = tf.to_int32(act_t)
+            # act_t = tf.to_int32(tf.argmax(prob_t, dimension=1))
+            # act_t = tf.to_int32(tf.reshape(tf.multinomial(prob_t, 1), [-1]))
 
             # probabilty of sampled action
             prob_shape_t = tf.shape(prob_t)
@@ -110,11 +119,12 @@ class Decoder(object):
                 # fetch step func arguments
                 hid_tm = hiddens[step_idx-1] if step_idx > 0 else init_hidden
                 in_idx_t = input_indices[step_idx]
-                hd_idx_t = head_indices[step_idx]
-                cd_idx_t = child_indices[step_idx]
+                vd_idx_t = valid_indices[step_idx]
+                lt_idx_t = left_indices[step_idx]
+                rt_idx_t = right_indices[step_idx]
                 
                 # call step func
-                hid_t, act_t, act_prob_t = step(hid_tm, in_idx_t, hd_idx_t, cd_idx_t)
+                hid_t, act_t, act_prob_t = step(hid_tm, in_idx_t, vd_idx_t, lt_idx_t, rt_idx_t)
 
                 # store step func returns
                 hiddens.append(hid_t)
@@ -138,18 +148,19 @@ if __name__ == '__main__':
     dec_model = Decoder(isize, hsize, msize, asize, buckets[-1])
 
     # placeholders
-    inputs, rewards = [], []
-    cindices, hindices = [], []
+    input_indices, rewards = [], []
+    valid_indices, left_indices, right_indices = [], [], []
     for i in range(dec_model.max_len):
         rewards.append(tf.placeholder(dtype=tf.float32, name='reward_%d'%i))
-        inputs.append(tf.placeholder(dtype=tf.int32, shape=[None, 2], name='input_%d'%i))
-        cindices.append(tf.placeholder(dtype=tf.int32, name='child_indice_%d'%i))
-        hindices.append(tf.placeholder(dtype=tf.int32, name='head_indice_%d'%i))
+        input_indices.append(tf.placeholder(dtype=tf.int32, shape=[None, 2], name='input_index_%d'%i))
+        valid_indices.append(tf.placeholder(dtype=tf.int32, name='valid_index_%d'%i))
+        left_indices.append (tf.placeholder(dtype=tf.int32, name='left_index_%d'%i))
+        right_indices.append(tf.placeholder(dtype=tf.int32, name='right_index_%d'%i))
 
     # Comes from the encoder
     memory = tf.Variable(np.random.randn(bsize, lsize, msize), dtype=tf.float32, trainable=False)
     
-    hiddens, actions, act_probs = dec_model(inputs, memory, cindices, hindices, rewards)
+    hiddens, actions, act_probs = dec_model(input_indices, memory, valid_indices, left_indices, right_indices, rewards)
     print len(hiddens), len(actions), len(act_probs)
 
     ####################
@@ -157,10 +168,11 @@ if __name__ == '__main__':
     ####################
 
     all_feeds = []
-    all_feeds.extend(inputs)
     all_feeds.extend(rewards)
-    all_feeds.extend(hindices)
-    all_feeds.extend(cindices)
+    all_feeds.extend(input_indices)
+    all_feeds.extend(valid_indices)
+    all_feeds.extend(left_indices)
+    all_feeds.extend(right_indices)
 
     all_fetches = []
     all_fetches.extend(hiddens)
@@ -168,39 +180,53 @@ if __name__ == '__main__':
 
     # get from evironment
     def take_action(action):
-        input  = np.repeat(np.arange(2).astype(np.int32).reshape(1, -1), bsize, axis=0)
-        reward = np.ones(action.shape)
-        h_indices = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
-        c_indices = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
-        return input, reward, h_indices, c_indices
+        input_idx  = np.repeat(np.arange(2).astype(np.int32).reshape(1, -1), bsize, axis=0)
+        valid_idx = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
+        left_idx = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
+        right_idx = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
+
+        if action is None:
+            reward = None
+        else:
+            reward = np.ones(action.shape)
+        return reward, input_idx, valid_idx, left_idx, right_idx
 
     with tf.Session() as sess:
         tf.initialize_all_variables().run()
 
-        init_inidx_np = np.repeat(np.arange(2).astype(np.int32).reshape(1, -1), bsize, axis=0)
-        init_hdidx_np = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
-        init_cdidx_np = np.repeat(np.arange(lsize).astype(np.int32).reshape(1, -1), bsize, axis=0)
+        _, init_inidx_np, init_vdidx_np, init_ltidx_np, init_rtidx_np = take_action(None)
 
         ##############################
-        hiddens_np, actions_np, inputs_np, rewards_np, hindices_np, cindices_np = [], [], [], [], [], []
-        inputs_np.append(init_inidx_np)
-        hindices_np.append(init_hdidx_np)
-        cindices_np.append(init_cdidx_np)
+        input_indices_np, valid_indices_np, left_indices_np, right_indices_np = [], [], [], []
+        hiddens_np, actions_np, rewards_np = [], [], []
+
+        input_indices_np.append(init_inidx_np)
+        valid_indices_np.append(init_vdidx_np)
+        left_indices_np.append(init_ltidx_np)
+        right_indices_np.append(init_rtidx_np)
+        
         t = time()
         
         feed_dict={}
         for i in range(lsize):
             # t_i = time()
-            feed_dict.update({inputs[i]:inputs_np[i], hindices[i]:hindices_np[i], cindices[i]:cindices_np[i]})
+            feed_dict.update({input_indices[i]:input_indices_np[i], 
+                              valid_indices[i]:valid_indices_np[i], 
+                              left_indices[i]:left_indices_np[i],
+                              right_indices[i]:right_indices_np[i]})
             
             h_i_np, a_i_np = sess.run([hiddens[i], actions[i]], feed_dict=feed_dict)
             
             hiddens_np.append(h_i_np)
             actions_np.append(a_i_np)
-            input_i_np, reward_i_np, hidx_np, cidx_np = take_action(actions_np[i])
-            rewards_np.append(reward_i_np)
-            inputs_np.append(input_i_np)
-            hindices_np.append(hidx_np)
-            cindices_np.append(cidx_np)
+            
+            reward_np, input_idx_np, valid_idx_np, left_idx_np, right_idx_np = take_action(actions_np[i])
+            
+            rewards_np.append(reward_np)
+            input_indices_np.append(input_idx_np)
+            valid_indices_np.append(valid_idx_np)
+            left_indices_np.append(left_idx_np)
+            right_indices_np.append(right_idx_np)
+            
             # print i, time() - t_i
         print time() - t
