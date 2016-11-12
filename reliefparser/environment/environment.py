@@ -23,6 +23,22 @@ class Environment(object):
                 else:
                     self.__rewards[b, i] = NEGTIVE_REWARD
 
+    def valid_actions(self):
+        val_acts = []
+        indexes, lefts, rights = self.get_indexes()
+        for b in xrange(self.__batch_size):
+            acts = []
+            for head in xrange(self.__sizes[b]):
+                if self.__marks[b, head]:
+                    left = lefts[b, head]
+                    right = rights[b, head]
+                    if left >= 0 and self.__rewards[b, left, head] > 0:
+                        acts.append(head)
+                    if right >= 0 and self.__rewards[b, right, head] > 0:
+                        acts.append(head + self.__length)
+            val_acts.append(acts)
+        return val_acts
+
     def take_action(self, acts):
         # each act is between [0, 2n-1]
         assert acts.shape == (self.__batch_size,)
