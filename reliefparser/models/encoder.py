@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 class Encoder(object):
-    def __init__(self, vsize, esize, hsize, **kwargs):
+    def __init__(self, vsize, esize, hsize, rnn_class, **kwargs):
         super(Encoder, self).__init__()
 
         self.name  = kwargs.get('name', self.__class__.__name__)
@@ -13,25 +13,27 @@ class Encoder(object):
         self.esize = esize  # embedding size
         self.hsize = hsize  # hidden size
 
+        self.rnn_cell_fw = rnn_class(num_units=self.hsize)
+        self.rnn_cell_bw = rnn_class(num_units=self.hsize)
+
     def __call__(self, input):
         with tf.variable_scope(self.scope):
             # embedding
             embeddings = tf.get_variable('embeddings', shape=[self.vsize, self.esize],
-                                         initializer=tf.random_normal_initializer(mean=0.0, stddev=0.1))
+                                         initializer=tf.random_normal_initializer(mean=0.0, stddev=1.), trainable=False)
             embed  = tf.nn.embedding_lookup(embeddings, input)
             
             # forward rnn
             with tf.variable_scope('fw_rnn'):
-                hiddens_fw, final_state_fw = tf.nn.dynamic_rnn(tf.nn.rnn_cell.GRUCell(num_units=self.hsize), embed, dtype=tf.float32)
+                hiddens_fw, final_state_fw = tf.nn.dynamic_rnn(self.rnn_cell_fw, embed, dtype=tf.float32)
 
             # backward rnn
             with tf.variable_scope('bw_rnn'):
-                hiddens_bw, final_state_bw = tf.nn.dynamic_rnn(tf.nn.rnn_cell.GRUCell(num_units=self.hsize), embed[:,-1::-1], dtype=tf.float32)
+                hiddens_bw, final_state_bw = tf.nn.dynamic_rnn(self.rnn_cell_bw, embed[:,-1::-1], dtype=tf.float32)
                 hiddens_bw = hiddens_bw[:,-1::-1]
 
             # concatenate
-            hiddens     = tf.concat(2, [hiddens_fw, hiddens_bw])
-            # final_state = tf.concat(1, [final_state_fw, final_state_bw])
+            hiddens = tf.concat(2, [hiddens_fw, hiddens_bw])
 
         return hiddens, final_state_fw, final_state_bw
 

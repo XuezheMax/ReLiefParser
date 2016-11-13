@@ -24,14 +24,22 @@ class PointerNet(object):
         self.dec_asize = asize
 
         self.buckets = buckets
+        self.max_len = self.buckets[-1]
 
-        self.max_grad_norm = kwargs.get('max_grad_norm', 10)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+        self.max_grad_norm = kwargs.get('max_grad_norm', 100)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
 
-        self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize)
-        self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.buckets[-1])
+        self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
 
-    def __call__(self, enc_input, dec_input_indices, valid_indices, left_indices, right_indices, rewards):
+        self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize, rnn_class=self.rnn_class)
+        self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, rnn_class=self.rnn_class)
+
+        self.baselines = []
+        self.bl_ratio = kwargs.get('bl_ratio', 0.95)
+        for i in range(self.max_len):
+            self.baselines.append(tf.Variable(0.0, trainable=False))
+
+    def __call__(self, enc_input, dec_input_indices, valid_indices, left_indices, right_indices, values, valid_masks=None):
         batch_size = tf.shape(enc_input)[0]
         # forward computation graph
         with tf.variable_scope(self.scope):
@@ -45,13 +53,16 @@ class PointerNet(object):
             # TODO: discuss with Max about the initial hidden of the decoder
             dec_hiddens, dec_actions, dec_act_probs = self.decoder(
                                                             dec_input_indices, enc_memory, 
-                                                            valid_indices, left_indices, right_indices, 
-                                                            rewards, init_hidden=enc_final_state_fw)
+                                                            valid_indices, left_indices, right_indices,
+                                                            valid_masks, init_state=enc_final_state_fw)
 
             # cost
             costs = []
-            for act_prob, reward in zip(dec_act_probs, rewards):
-                costs.append(tf.reduce_mean(act_prob * (-reward)))
+            update_ops = []
+            for step_idx, (act_prob, value, baseline) in enumerate(zip(dec_act_probs, values, self.baselines)):
+                costs.append(-tf.reduce_mean(tf.log(act_prob + 1e-8) * (value - baseline)))
+                new_baseline = self.bl_ratio * baseline + (1-self.bl_ratio) * tf.reduce_mean(value)
+                update_ops.append(tf.assign(baseline, new_baseline))
 
         # gradient computation graph
         self.params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.scope)
@@ -59,11 +70,15 @@ class PointerNet(object):
         for limit in self.buckets:
             print '0 ~ %d' % (limit-1)
             grad_params = tf.gradients(tf.reduce_sum(tf.pack(costs[:limit])), self.params)
-            clipped_gradients, norm = tf.clip_by_global_norm(grad_params, self.max_grad_norm)
+            if self.max_grad_norm is not None:
+                clipped_gradients, norm = tf.clip_by_global_norm(grad_params, self.max_grad_norm)
+            else:
+                clipped_gradients = grad_params
             train_op = self.optimizer.apply_gradients(
-                            zip(grad_params, self.params),
+                            zip(clipped_gradients, self.params),
                             global_step=tf.contrib.framework.get_or_create_global_step())
-            with tf.control_dependencies([train_op]):
+            with tf.control_dependencies([train_op] + update_ops[:limit]):
+                # train_ops.append(tf.Print(tf.constant(1.), [norm]))
                 train_ops.append(tf.constant(1.))
 
         return dec_hiddens, dec_actions, train_ops
