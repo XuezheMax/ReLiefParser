@@ -11,7 +11,7 @@ class Decoder(object):
         self.name  = kwargs.get('name', self.__class__.__name__)
         self.scope = kwargs.get('scope', self.name)
 
-        self.epsilon = tf.Variable(kwargs.get('epsilon', 0.2), trainable=False)
+        self.epsilon = tf.Variable(kwargs.get('epsilon', 0.05), trainable=False)
 
         self.isize = isize
         self.hsize = hsize
@@ -97,24 +97,26 @@ class Decoder(object):
             # concatenate and softmax
             prob_t = tf.nn.softmax(tf.concat(1, [score_left, score_right]))
             if mask_t is not None:
-                prob_t *= mask_t
+                prob_t = prob_t * mask_t
+                prob_t /= tf.reduce_sum(prob_t, reduction_indices=[1], keep_dims=True)
+            logp_t = tf.log(prob_t + 1e-8)
 
             # use epsilon greedy as the exploring policy
-            greedy_act_func = lambda: tf.argmax(prob_t, dimension=1)
-            sample_act_func = lambda: tf.reshape(tf.multinomial(prob_t, 1), [-1])
+            greedy_act_func = lambda: tf.argmax(logp_t, dimension=1)
+            sample_act_func = lambda: tf.reshape(tf.multinomial(logp_t, 1), [-1])
 
             rand_num = tf.random_uniform(shape=[1])[0]
             act_t = tf.cond(rand_num>self.epsilon, greedy_act_func, sample_act_func)
             act_t = tf.to_int32(act_t)
 
             # probabilty of sampled action
-            prob_shape_t = tf.shape(prob_t)
+            prob_shape_t = tf.shape(logp_t)
             action_idx = tf.range(prob_shape_t[0]) * prob_shape_t[1] + act_t
-            act_prob_t = tf.gather(tf.reshape(prob_t, [-1]), action_idx)
+            act_logp_t = tf.gather(tf.reshape(logp_t, [-1]), action_idx)
             
-            return hid_t, state_t, act_t, act_prob_t
+            return hid_t, state_t, act_t, act_logp_t
 
-        hiddens, states, actions, act_probs = [], [], [], []
+        hiddens, states, actions, act_logps = [], [], [], []
         # core computational graph
         with tf.variable_scope(self.scope) as dec_scope:
             for step_idx in range(self.max_len):
@@ -138,9 +140,9 @@ class Decoder(object):
                 hiddens.append(hid_t)
                 states.append(state_t)
                 actions.append(act_t)
-                act_probs.append(act_prob_t)
+                act_logps.append(act_prob_t)
 
-        return hiddens, actions, act_probs
+        return hiddens, actions, act_logps
 
 #### test script
 if __name__ == '__main__':

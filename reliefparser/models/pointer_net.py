@@ -27,12 +27,13 @@ class PointerNet(object):
         self.max_len = self.buckets[-1]
 
         self.max_grad_norm = kwargs.get('max_grad_norm', 100)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
+        # self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
+        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
 
         self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
 
         self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize, rnn_class=self.rnn_class)
-        self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, rnn_class=self.rnn_class)
+        self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, rnn_class=self.rnn_class, epsilon=1.0)
 
         self.baselines = []
         self.bl_ratio = kwargs.get('bl_ratio', 0.95)
@@ -51,7 +52,7 @@ class PointerNet(object):
 
             # decoder 
             # TODO: discuss with Max about the initial hidden of the decoder
-            dec_hiddens, dec_actions, dec_act_probs = self.decoder(
+            dec_hiddens, dec_actions, dec_act_logps = self.decoder(
                                                             dec_input_indices, enc_memory, 
                                                             valid_indices, left_indices, right_indices,
                                                             valid_masks, init_state=enc_final_state_fw)
@@ -59,8 +60,8 @@ class PointerNet(object):
             # cost
             costs = []
             update_ops = []
-            for step_idx, (act_prob, value, baseline) in enumerate(zip(dec_act_probs, values, self.baselines)):
-                costs.append(-tf.reduce_mean(tf.log(act_prob + 1e-8) * (value - baseline)))
+            for step_idx, (act_logp, value, baseline) in enumerate(zip(dec_act_logps, values, self.baselines)):
+                costs.append(-tf.reduce_mean(act_logp * (value - baseline)))
                 new_baseline = self.bl_ratio * baseline + (1-self.bl_ratio) * tf.reduce_mean(value)
                 update_ops.append(tf.assign(baseline, new_baseline))
 
