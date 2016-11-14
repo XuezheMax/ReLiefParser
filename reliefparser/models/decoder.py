@@ -97,11 +97,10 @@ class Decoder(object):
             score_right = tf.reduce_sum(att_right * weight_right, [2])
             
             # concatenate and softmax
-            prob_t = tf.nn.softmax(tf.concat(1, [score_left, score_right]))
+            score_t = tf.concat(1, [score_left, score_right])
             if mask_t is not None:
-                prob_t = prob_t * mask_t
-                prob_t /= tf.reduce_sum(prob_t, reduction_indices=[1], keep_dims=True)
-            logp_t = tf.log(prob_t + 1e-8)
+                score_t = score_t * mask_t
+            logp_t = tf.nn.log_softmax(score_t)
 
             # use epsilon greedy as the exploring policy
             greedy_act_func = lambda: tf.argmax(logp_t, dimension=1)

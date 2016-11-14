@@ -26,7 +26,7 @@ class PointerNet(object):
         self.buckets = buckets
         self.max_len = self.buckets[-1]
 
-        self.max_grad_norm = kwargs.get('max_grad_norm', None)
+        self.max_grad_norm = kwargs.get('max_grad_norm', 100)
         self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
         # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
 

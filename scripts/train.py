@@ -14,7 +14,7 @@ from reliefparser.models import *
 
 # Basic model parameters as external flags.
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('device', '/cpu:0', 'Device to use.')
+tf.app.flags.DEFINE_string('device', '/gpu:0', 'Device to use.')
 
 # np.random.seed(1)
 logging = tf.logging
@@ -26,27 +26,28 @@ word_alphabet, pos_alphabet, type_alphabet = dataio.create_alphabets("data/alpha
 
 data = dataio.read_data('../data/ptb3.0-stanford.auto.cpos.train.conll', word_alphabet, pos_alphabet, type_alphabet)
 
-print 'number of samples: %d' % len(data[0])
+print 'number of samples: %s' % (' '.join('%d' % len(d) for d in data))
 
 ####################
 # Hyper-parameters
 ####################
 vsize = word_alphabet.size()
-esize = 64
-hsize = 64
-asize = 64
-isize = 64
+esize = 512
+hsize = 512
+asize = 512
+isize = 512
 
-buckets = [8]
+buckets = [10, 20]
 # buckets = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
 max_len = buckets[-1]
 
-bsize = 16
+bsize = 128
 
 ####################
 # Building model
 ####################
-with tf.device(FLAGS.device):
+g = tf.Graph()
+with g.as_default(), tf.device(FLAGS.device):
     # model initialization
     pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
 
@@ -56,7 +57,7 @@ with tf.device(FLAGS.device):
     input_indices, values, valid_masks = [], [], []
     valid_indices, left_indices, right_indices = [], [], []
     for i in range(max_len):
-        values.append(tf.placeholder(dtype=tf.float32, name='reward_%d'%i))
+        values.append(tf.placeholder(dtype=tf.float32, name='value_%d'%i))
         valid_masks.append(tf.placeholder(dtype=tf.float32, name='input_index_%d'%i))
         input_indices.append(tf.placeholder(dtype=tf.int32, name='input_index_%d'%i))
         valid_indices.append(tf.placeholder(dtype=tf.int32, name='valid_index_%d'%i))
@@ -69,32 +70,20 @@ with tf.device(FLAGS.device):
                                                 left_indices, right_indices, values, 
                                                 valid_masks=valid_masks)
 
-all_feeds = []
-all_feeds.extend(values)
-all_feeds.extend(valid_masks)
-all_feeds.extend(input_indices)
-all_feeds.extend(valid_indices)
-all_feeds.extend(right_indices)
-all_feeds.extend(left_indices)
-all_feeds.append(enc_input)
-
-all_fetches = []
-all_fetches.extend(dec_hiddens)
-all_fetches.extend(dec_actions)
 ########## End of section ##########
 
-max_iter = 10000
+max_iter = 100000
 
 expected_value, observed_value = 0., 0.
 
 logging.info('Begin training...')
-with tf.Session() as sess:
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+with tf.Session(graph=g, config=config) as sess:
+# with tf.Session() as sess:
     sess.run(tf.initialize_all_variables())
     uidx = 0
-    # print wid_inputs
-    # print masks
     # wid_inputs, pid_inputs, hid_inputs, tid_inputs, masks = dataio.get_batch(data, bsize)
-    # print np.sum(masks[:,1:])
     for eidx in range(max_iter):
         # if eidx > 0 and eidx % 200 == 0:
         #     new_epsilon = pointer_net.decoder.epsilon.value() / 2.
@@ -102,18 +91,31 @@ with tf.Session() as sess:
         #     logging.info('New epsilon: %.4f' % sess.run(new_epsilon))
 
         wid_inputs, pid_inputs, hid_inputs, tid_inputs, masks = dataio.get_batch(data, bsize)
-        # expected_value = expected_value * 0.95 + np.sum(masks[:,1:]) * 0.05
         expected_value += np.sum(masks[:,1:])
         curr_env = env.Environment(hid_inputs, masks)
 
         init_vdidx_np, init_ltidx_np, init_rtidx_np = curr_env.get_indexes()
         batch_size, seq_len = init_vdidx_np.shape
-        # print seq_len
 
         # setup partial run handle
         bucket_id = bisect.bisect_left(buckets, seq_len)
         train_op = train_ops[bucket_id]
-        handle = sess.partial_run_setup(all_fetches+[train_op], all_feeds)
+
+        all_feeds = []
+        all_feeds.extend(values[:seq_len])
+        all_feeds.extend(valid_masks[:seq_len])
+        all_feeds.extend(input_indices[:seq_len])
+        all_feeds.extend(valid_indices[:seq_len])
+        all_feeds.extend(right_indices[:seq_len])
+        all_feeds.extend(left_indices[:seq_len])
+        all_feeds.append(enc_input)
+        
+        all_fetches = []
+        all_fetches.extend(dec_hiddens[:seq_len])
+        all_fetches.extend(dec_actions[:seq_len])
+        all_fetches.append(train_op)
+
+        handle = sess.partial_run_setup(all_fetches, all_feeds)
 
         # initial data
         init_vdidx_np[init_vdidx_np==-1] = seq_len
@@ -157,8 +159,8 @@ with tf.Session() as sess:
             if eidx == max_iter-1:
                 print 'ac', a_i_np
 
-            hiddens_np.append(h_i_np)
-            actions_np.append(a_i_np)
+            # hiddens_np.append(h_i_np)
+            # actions_np.append(a_i_np)
 
             reward_i, head_idx, child_idx, valid_idx, left_idx, right_idx = curr_env.take_action(a_i_np)
 
@@ -193,7 +195,7 @@ with tf.Session() as sess:
         for i in range(len(values_np)-1,-1,-1):
             values_np[i] = rewards_np[i] + values_np[i+1] * 0.95 if i < len(values_np)-1 else rewards_np[i]
 
-        sess.partial_run(handle, train_op, feed_dict={reward:reward_np for reward, reward_np in zip(values, values_np)})
+        sess.partial_run(handle, train_op, feed_dict={value:value_np for value, value_np in zip(values, values_np)})
 
         R = np.array(rewards_np)
         observed_value += R[R==1].shape[0]
