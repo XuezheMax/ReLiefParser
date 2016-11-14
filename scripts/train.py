@@ -12,9 +12,12 @@ import reliefparser.utils as utils
 
 from reliefparser.models import *
 
-np.random.seed(1)
-logging = tf.logging
+# Basic model parameters as external flags.
+FLAGS = tf.app.flags.FLAGS
+tf.app.flags.DEFINE_string('device', '/cpu:0', 'Device to use.')
 
+# np.random.seed(1)
+logging = tf.logging
 logging.set_verbosity(logging.INFO)
 
 word_alphabet, pos_alphabet, type_alphabet = dataio.create_alphabets("data/alphabets/", 
@@ -23,7 +26,7 @@ word_alphabet, pos_alphabet, type_alphabet = dataio.create_alphabets("data/alpha
 
 data = dataio.read_data('../data/ptb3.0-stanford.auto.cpos.train.conll', word_alphabet, pos_alphabet, type_alphabet)
 
-print len(data[0])
+print 'number of samples: %d' % len(data[0])
 
 ####################
 # Hyper-parameters
@@ -43,28 +46,28 @@ bsize = 16
 ####################
 # Building model
 ####################
+with tf.device(FLAGS.device):
+    # model initialization
+    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
 
-# model initialization
-pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
+    # placeholders
+    enc_input = tf.placeholder(dtype=tf.int32, shape=[None, None], name='encoder_input')
 
-# placeholders
-enc_input = tf.placeholder(dtype=tf.int32, shape=[None, None], name='encoder_input')
+    input_indices, values, valid_masks = [], [], []
+    valid_indices, left_indices, right_indices = [], [], []
+    for i in range(max_len):
+        values.append(tf.placeholder(dtype=tf.float32, name='reward_%d'%i))
+        valid_masks.append(tf.placeholder(dtype=tf.float32, name='input_index_%d'%i))
+        input_indices.append(tf.placeholder(dtype=tf.int32, name='input_index_%d'%i))
+        valid_indices.append(tf.placeholder(dtype=tf.int32, name='valid_index_%d'%i))
+        left_indices.append (tf.placeholder(dtype=tf.int32, name='left_index_%d'%i))
+        right_indices.append(tf.placeholder(dtype=tf.int32, name='right_index_%d'%i))
 
-input_indices, values, valid_masks = [], [], []
-valid_indices, left_indices, right_indices = [], [], []
-for i in range(max_len):
-    values.append(tf.placeholder(dtype=tf.float32, name='reward_%d'%i))
-    valid_masks.append(tf.placeholder(dtype=tf.float32, name='input_index_%d'%i))
-    input_indices.append(tf.placeholder(dtype=tf.int32, name='input_index_%d'%i))
-    valid_indices.append(tf.placeholder(dtype=tf.int32, name='valid_index_%d'%i))
-    left_indices.append (tf.placeholder(dtype=tf.int32, name='left_index_%d'%i))
-    right_indices.append(tf.placeholder(dtype=tf.int32, name='right_index_%d'%i))
-
-# build computation graph
-dec_hiddens, dec_actions, train_ops = pointer_net(
-                                            enc_input, input_indices, valid_indices, 
-                                            left_indices, right_indices, values, 
-                                            valid_masks=valid_masks)
+    # build computation graph
+    dec_hiddens, dec_actions, train_ops = pointer_net(
+                                                enc_input, input_indices, valid_indices, 
+                                                left_indices, right_indices, values, 
+                                                valid_masks=valid_masks)
 
 all_feeds = []
 all_feeds.extend(values)
