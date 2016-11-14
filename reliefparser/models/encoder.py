@@ -16,11 +16,13 @@ class Encoder(object):
         self.rnn_cell_fw = rnn_class(num_units=self.hsize)
         self.rnn_cell_bw = rnn_class(num_units=self.hsize)
 
+        self.embed_initializer = tf.random_normal_initializer(mean=0.0, stddev=1.)
+
     def __call__(self, input):
         with tf.variable_scope(self.scope):
             # embedding
             embeddings = tf.get_variable('embeddings', shape=[self.vsize, self.esize],
-                                         initializer=tf.random_normal_initializer(mean=0.0, stddev=1.), trainable=False)
+                                         initializer=self.embed_initializer)
             embed  = tf.nn.embedding_lookup(embeddings, input)
             
             # forward rnn

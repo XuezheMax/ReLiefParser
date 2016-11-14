@@ -11,7 +11,7 @@ class Decoder(object):
         self.name  = kwargs.get('name', self.__class__.__name__)
         self.scope = kwargs.get('scope', self.name)
 
-        self.epsilon = tf.Variable(kwargs.get('epsilon', 0.05), trainable=False)
+        self.epsilon = tf.Variable(kwargs.get('epsilon', 1.0), trainable=False)
 
         self.isize = isize
         self.hsize = hsize
@@ -21,6 +21,8 @@ class Decoder(object):
         self.max_len = max_len
 
         self.rnn_cell = rnn_class(self.hsize)
+
+        self.weight_intializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
 
     def __call__(self, input_indices, memory, valid_indices, left_indices, right_indices, valid_masks, init_state=None):
         batch_size = tf.shape(input_indices[0])[0]
@@ -37,7 +39,7 @@ class Decoder(object):
             inp_vecs = tf.gather(tf.reshape(memory, [-1, self.msize]), flat_in_idx)
 
             weight_combine = tf.get_variable(name='weight_combine', shape=[2*self.msize, self.isize],
-                                             initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                             initializer=self.weight_intializer)
             bias_combine   = tf.get_variable(name='bias_combine', shape=[self.isize],
                                              initializer=tf.constant_initializer(value=0.0))
 
@@ -59,24 +61,24 @@ class Decoder(object):
 
             # attention vec left
             weight_hid_left = tf.get_variable(name='weight_hidden_left', shape=[self.hsize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                              initializer=self.weight_intializer)
             weight_hd_left  = tf.get_variable(name='weight_head_left', shape=[1, self.msize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                              initializer=self.weight_intializer)
             weight_cd_left  = tf.get_variable(name='weight_child_left', shape=[1, self.msize, self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                              initializer=self.weight_intializer)
             weight_left     = tf.get_variable(name='weight_left', shape=[self.asize],
-                                              initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                              initializer=self.weight_intializer)
             bias_left       = tf.get_variable(name='bias_left', shape=[self.asize],
                                               initializer=tf.constant_initializer(value=0.0))
 
             weight_hid_right = tf.get_variable(name='weight_hidden_right', shape=[self.hsize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                               initializer=self.weight_intializer)
             weight_hd_right  = tf.get_variable(name='weight_head_right', shape=[1, self.msize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                               initializer=self.weight_intializer)
             weight_cd_right  = tf.get_variable(name='weight_child_right', shape=[1, self.msize, self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                               initializer=self.weight_intializer)
             weight_right     = tf.get_variable(name='weight_right', shape=[self.asize],
-                                               initializer=tf.random_normal_initializer(mean=0.0, stddev=1.))
+                                               initializer=self.weight_intializer)
             bias_right       = tf.get_variable(name='bias_right', shape=[self.asize],
                                                initializer=tf.constant_initializer(value=0.0))
 

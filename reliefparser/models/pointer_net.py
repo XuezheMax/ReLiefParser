@@ -26,11 +26,12 @@ class PointerNet(object):
         self.buckets = buckets
         self.max_len = self.buckets[-1]
 
-        self.max_grad_norm = kwargs.get('max_grad_norm', 100)
-        # self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
-        self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
+        self.max_grad_norm = kwargs.get('max_grad_norm', None)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+        # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
 
-        self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
+        # self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
+        self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.GRUCell)
 
         self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize, rnn_class=self.rnn_class)
         self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, rnn_class=self.rnn_class, epsilon=1.0)
