@@ -77,8 +77,7 @@ class PointerNet(object):
             else:
                 clipped_gradients = grad_params
             train_op = self.optimizer.apply_gradients(
-                            zip(clipped_gradients, self.params),
-                            global_step=tf.contrib.framework.get_or_create_global_step())
+                            zip(clipped_gradients, self.params))
             with tf.control_dependencies([train_op] + update_ops[:limit]):
                 # train_ops.append(tf.Print(tf.constant(1.), [norm]))
                 train_ops.append(tf.constant(1.))
