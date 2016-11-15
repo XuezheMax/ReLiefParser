@@ -13,8 +13,10 @@ class Encoder(object):
         self.esize = esize  # embedding size
         self.hsize = hsize  # hidden size
 
-        self.rnn_cell_fw = rnn_class(num_units=self.hsize)
-        self.rnn_cell_bw = rnn_class(num_units=self.hsize)
+        self.num_layer = kwargs.get('num_layer', 1)
+
+        self.rnn_cell_fw = tf.nn.rnn_cell.MultiRNNCell([rnn_class(num_units=self.hsize)] * self.num_layer)
+        self.rnn_cell_bw = tf.nn.rnn_cell.MultiRNNCell([rnn_class(num_units=self.hsize)] * self.num_layer)
 
         self.embed_initializer = tf.random_normal_initializer(mean=0.0, stddev=1.)
 

@@ -20,7 +20,8 @@ class Decoder(object):
 
         self.max_len = max_len
 
-        self.rnn_cell = rnn_class(self.hsize)
+        self.num_layer = kwargs.get('num_layer', 1)
+        self.rnn_cell = tf.nn.rnn_cell.MultiRNNCell([rnn_class(num_units=self.hsize)] * self.num_layer)
 
         self.weight_intializer = tf.random_normal_initializer(mean=0.0, stddev=0.01)
 

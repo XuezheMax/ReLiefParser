@@ -14,7 +14,7 @@ from reliefparser.models import *
 
 # Basic model parameters as external flags.
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_string('device', '/gpu:0', 'Device to use.')
+tf.app.flags.DEFINE_string('device', '/cpu:0', 'Device to use.')
 
 # np.random.seed(1)
 logging = tf.logging
@@ -32,12 +32,13 @@ print 'number of samples: %s' % (' '.join('%d' % len(d) for d in data))
 # Hyper-parameters
 ####################
 vsize = word_alphabet.size()
-esize = 512
-hsize = 512
-asize = 512
-isize = 512
+esize = 5
+hsize = 5
+asize = 5
+isize = 5
+num_layer = 2
 
-buckets = [10, 20]
+buckets = [10]
 # buckets = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
 max_len = buckets[-1]
 
@@ -49,7 +50,7 @@ bsize = 128
 g = tf.Graph()
 with g.as_default(), tf.device(FLAGS.device):
     # model initialization
-    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize)
+    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize, num_layer=num_layer)
 
     # placeholders
     enc_input = tf.placeholder(dtype=tf.int32, shape=[None, None], name='encoder_input')
@@ -111,7 +112,7 @@ with tf.Session(graph=g, config=config) as sess:
         all_feeds.append(enc_input)
         
         all_fetches = []
-        all_fetches.extend(dec_hiddens[:seq_len])
+        # all_fetches.extend(dec_hiddens[:seq_len])
         all_fetches.extend(dec_actions[:seq_len])
         all_fetches.append(train_op)
 
@@ -155,7 +156,8 @@ with tf.Session(graph=g, config=config) as sess:
             if i == 0:
                 feed_dict.update({enc_input:wid_inputs})
 
-            h_i_np, a_i_np = sess.partial_run(handle, [dec_hiddens[i], dec_actions[i]], feed_dict=feed_dict)
+            # h_i_np, a_i_np = sess.partial_run(handle, [dec_hiddens[i], dec_actions[i]], feed_dict=feed_dict)
+            a_i_np = sess.partial_run(handle, dec_actions[i], feed_dict=feed_dict)
             if eidx == max_iter-1:
                 print 'ac', a_i_np
 
