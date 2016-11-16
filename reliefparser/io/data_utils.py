@@ -153,3 +153,53 @@ def get_batch(data, batch_size):
         masks[b, :inst_size] = 1.0
 
     return wid_inputs, pid_inputs, hid_inputs, tid_inputs, masks
+
+
+def iterate_batch(data, batch_size, shuffle=False):
+    bucket_sizes = [len(data[b]) for b in xrange(len(_buckets))]
+    total_size = float(sum(bucket_sizes))
+    bucket_indices = np.arange(len(_buckets))
+    if shuffle:
+        np.random.shuffle((bucket_indices))
+
+    for bucket_id in bucket_indices:
+        bucket_size = bucket_sizes[bucket_id]
+        if bucket_size == 0:
+            continue
+
+        bucket_length = _buckets[bucket_id]
+        wid_inputs = np.empty([bucket_size, bucket_length], dtype=np.int32)
+        pid_inputs = np.empty([bucket_size, bucket_length], dtype=np.int32)
+        hid_inputs = np.empty([bucket_size, bucket_length], dtype=np.int32)
+        tid_inputs = np.empty([bucket_size, bucket_length], dtype=np.int32)
+
+        masks = np.zeros([bucket_size, bucket_length], dtype=np.float32)
+
+        for i, inst in enumerate(data[bucket_id]):
+            wids, cid_seqs, pids, hids, tids = inst
+            inst_size = len(wids)
+            # word ids
+            wid_inputs[i, :inst_size] = wids
+            wid_inputs[i, inst_size:] = PAD_ID
+            # pos ids
+            pid_inputs[i, :inst_size] = pids
+            pid_inputs[i, inst_size:] = PAD_ID
+            # type ids
+            tid_inputs[i, :inst_size] = tids
+            tid_inputs[i, inst_size:] = PAD_ID
+            # heads
+            hid_inputs[i, :inst_size] = hids
+            hid_inputs[i, inst_size:] = -1
+            # masks
+            masks[i, :inst_size] = 1.0
+
+        indices = None
+        if shuffle:
+            indices = np.arange(bucket_size)
+            np.random.shuffle(indices)
+        for start_idx in range(0, bucket_size, batch_size):
+            if shuffle:
+                excerpt = indices[start_idx:start_idx + batch_size]
+            else:
+                excerpt = slice(start_idx, start_idx + batch_size)
+            yield wid_inputs[excerpt], pid_inputs[excerpt], hid_inputs[excerpt], tid_inputs[excerpt], masks[excerpt]
