@@ -18,8 +18,8 @@ class PointerNet(object):
         self.enc_esize = esize
         self.enc_hsize = hsize
 
-        self.dec_msize = self.enc_hsize * 2  # concatenation of bidirectional RNN
-        self.dec_isize = kwargs.get('dec_isize', self.enc_hsize)
+        self.dec_msize = self.enc_hsize * 2  # concatenation of bidirectional RNN states
+        self.dec_isize = self.enc_hsize * 2  # concatenation of bidirectional RNN states
         self.dec_hsize = hsize
         self.dec_asize = asize
 
