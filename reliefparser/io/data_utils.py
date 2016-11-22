@@ -102,7 +102,7 @@ def read_data(source_path, word_alphabet, pos_alphabet, type_alphabet, max_size=
 
         inst_size = inst.length()
         for bucket_id, bucket_size in enumerate(_buckets):
-            if inst_size < bucket_size:
+            if inst_size <= bucket_size:
                 data[bucket_id].append([inst.word_ids, inst.pos_ids, inst.heads, inst.type_ids])
                 break
 

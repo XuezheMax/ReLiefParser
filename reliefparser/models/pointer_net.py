@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from encoder import Encoder
-from decoder import Decoder
+from decoder import Decoder, TreeDecoder
 
 import bisect
 from time import time
@@ -31,13 +31,18 @@ class PointerNet(object):
         # self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=1e-2)
 
         self.num_layer = kwargs.get('num_layer', 1)
-        # self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
-        self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.GRUCell)
+        self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.BasicLSTMCell)
+        # self.rnn_class = kwargs.get('rnn_class', tf.nn.rnn_cell.GRUCell)
 
         self.encoder = Encoder(self.enc_vsize, self.enc_esize, self.enc_hsize, 
                                rnn_class=self.rnn_class, num_layer = self.num_layer)
-        self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, 
-                               rnn_class=self.rnn_class, num_layer = self.num_layer, epsilon=1.0)
+
+        if kwargs.get('tree_decoder', False):
+            self.decoder = TreeDecoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, 
+                                       rnn_class=self.rnn_class, num_layer = self.num_layer, epsilon=1.0)
+        else:
+            self.decoder = Decoder(self.dec_isize, self.dec_hsize, self.dec_msize, self.dec_asize, self.max_len, 
+                                   rnn_class=self.rnn_class, num_layer = self.num_layer, epsilon=1.0)
 
         self.baselines = []
         self.bl_ratio = kwargs.get('bl_ratio', 0.95)
@@ -51,12 +56,9 @@ class PointerNet(object):
             # encoder output
             enc_memory, enc_final_state_fw, _ = self.encoder(enc_input)
 
-            # padding the memory with a dummy (all-zero) vector at the end
-            enc_memory = tf.pad(enc_memory, [[0,0],[0,1],[0,0]])
-
             # decoder
             dec_hiddens, dec_actions, dec_act_logps = self.decoder(
-                                                            dec_input_indices, enc_memory, 
+                                                            enc_memory, dec_input_indices, 
                                                             valid_indices, left_indices, right_indices,
                                                             valid_masks, init_state=enc_final_state_fw)
 
@@ -64,8 +66,9 @@ class PointerNet(object):
             costs = []
             update_ops = []
             for step_idx, (act_logp, value, baseline) in enumerate(zip(dec_act_logps, values, self.baselines)):
-                costs.append(-tf.reduce_mean(act_logp * (value - baseline)))
+                # costs.append(-tf.reduce_mean(act_logp * (value - baseline)))
                 new_baseline = self.bl_ratio * baseline + (1-self.bl_ratio) * tf.reduce_mean(value)
+                costs.append(-tf.reduce_mean(act_logp * value))
                 update_ops.append(tf.assign(baseline, new_baseline))
 
         # gradient computation graph

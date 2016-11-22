@@ -54,18 +54,17 @@ bsize = 1
 g = tf.Graph()
 with g.as_default(), tf.device(FLAGS.device):
     # model initialization
-    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize, num_layer=num_layer)
+    pointer_net = PointerNet(vsize, esize, hsize, asize, buckets, dec_isize=isize, num_layer=num_layer, tree_decoder=True)
 
     # placeholders
     enc_input = tf.placeholder(dtype=tf.int32, shape=[None, None], name='encoder_input')
 
-    input_indices, values, valid_masks = [], [], []
+    input_masks, values, valid_masks = [], [], []
     valid_indices, left_indices, right_indices = [], [], []
     for i in range(max_len):
         values.append(tf.placeholder(dtype=tf.float32, name='value_%d'%i))
         valid_masks.append(tf.placeholder(dtype=tf.float32, name='input_index_%d'%i))
-        # input_indices.append(tf.placeholder(dtype=tf.float32, shape=[None, None], name='input_index_%d'%i))
-        input_indices.append(tf.placeholder(dtype=tf.int32, name='input_index_%d'%i))
+        input_masks.append(tf.placeholder(dtype=tf.float32, shape=[None, None], name='input_mask_%d'%i))
 
         valid_indices.append(tf.placeholder(dtype=tf.int32, name='valid_index_%d'%i))
         left_indices.append (tf.placeholder(dtype=tf.int32, name='left_index_%d'%i))
@@ -73,11 +72,12 @@ with g.as_default(), tf.device(FLAGS.device):
 
     # build computation graph
     dec_hiddens, dec_actions, train_ops = pointer_net(
-                                                enc_input, input_indices, valid_indices, 
+                                                enc_input, input_masks, valid_indices, 
                                                 left_indices, right_indices, values, 
                                                 valid_masks=valid_masks)
 
 ########## End of section ##########
+
 baselines = np.zeros(max_len)
 max_iter = 100000
 
@@ -111,7 +111,7 @@ with tf.Session(graph=g, config=config) as sess:
         all_feeds = []
         all_feeds.extend(values[:seq_len])
         all_feeds.extend(valid_masks[:seq_len])
-        all_feeds.extend(input_indices[:seq_len])
+        all_feeds.extend(input_masks[:seq_len])
         all_feeds.extend(valid_indices[:seq_len])
         all_feeds.extend(right_indices[:seq_len])
         all_feeds.extend(left_indices[:seq_len])
@@ -129,35 +129,25 @@ with tf.Session(graph=g, config=config) as sess:
         init_ltidx_np[init_ltidx_np==-1] = seq_len
         init_rtidx_np[init_rtidx_np==-1] = seq_len
 
-        init_inidx_np = np.array(np.ones((bsize, 2)) * seq_len).astype(np.int32)
-        # init_inidx_np = np.zeros((bsize, seq_len+1)).astype(np.float32)
-        # init_inidx_np[:,seq_len] = 1.
+        init_inmask_np = np.zeros((bsize, seq_len+1)).astype(np.float32)
+        init_inmask_np[:,seq_len] = 1.
 
         # numerical data collections
-        valid_masks_np, input_indices_np, valid_indices_np, left_indices_np, right_indices_np = [], [], [], [], []
+        valid_masks_np, input_masks_np, valid_indices_np, left_indices_np, right_indices_np = [], [], [], [], []
         hiddens_np, actions_np, rewards_np = [], [], []
 
         init_valid_mask = np.tile(masks, (1,2))
         init_valid_mask[:,0] = 0
         init_valid_mask[:,seq_len] = 1
         valid_masks_np.append(init_valid_mask)
-        input_indices_np.append(init_inidx_np)
+        input_masks_np.append(init_inmask_np)
         valid_indices_np.append(init_vdidx_np)
         left_indices_np.append(init_ltidx_np)
         right_indices_np.append(init_rtidx_np)
 
         for i in range(seq_len):
-            if eidx == max_iter-1:
-                print '===== Step %d =====' % i
-                print 'va', curr_env.valid_actions()
-                print 'ip', input_indices_np[i]
-                print 'vm', valid_masks_np[i]
-                print 'vd', valid_indices_np[i]
-                # print 'lt', left_indices_np[i]
-                # print 'rt', right_indices_np[i]
-            
             feed_dict = {valid_masks[i]:valid_masks_np[i], 
-                         input_indices[i]:input_indices_np[i], 
+                         input_masks[i]:input_masks_np[i], 
                          valid_indices[i]:valid_indices_np[i], 
                          left_indices[i]:left_indices_np[i], 
                          right_indices[i]:right_indices_np[i]}
@@ -172,8 +162,7 @@ with tf.Session(graph=g, config=config) as sess:
             # hiddens_np.append(h_i_np)
             # actions_np.append(a_i_np)
 
-            # reward_i, head_idx, child_idx, input_idx, valid_idx, left_idx, right_idx = curr_env.take_action(a_i_np)
-            reward_i, head_idx, child_idx, _, valid_idx, left_idx, right_idx = curr_env.take_action(a_i_np)
+            reward_i, _, _, input_mask, valid_idx, left_idx, right_idx = curr_env.take_action(a_i_np)
 
             # there are at most (seq_len - 1) actions to take within each minibatch
             if i < seq_len - 1:
@@ -184,17 +173,13 @@ with tf.Session(graph=g, config=config) as sess:
             valid_mask = np.tile(np.asarray(valid_idx>=0, dtype=np.float32), (1, 2))
             valid_mask[:,0] = 0
             valid_mask[:,seq_len] = 1
-            head_idx [head_idx ==-1] = seq_len
-            child_idx[child_idx==-1] = seq_len
             valid_idx[valid_idx==-1] = seq_len
             left_idx [left_idx ==-1] = seq_len
             right_idx[right_idx==-1] = seq_len
 
-            input_idx = np.concatenate((head_idx.reshape(-1, 1), child_idx.reshape(-1, 1)), axis=1)
-
             rewards_np.append(reward_i)
             valid_masks_np.append(valid_mask)
-            input_indices_np.append(input_idx)
+            input_masks_np.append(input_mask)
             valid_indices_np.append(valid_idx)
             left_indices_np.append(left_idx)
             right_indices_np.append(right_idx)

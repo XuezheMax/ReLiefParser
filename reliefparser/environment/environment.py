@@ -50,7 +50,8 @@ class Environment(object):
         heads = acts % self.__length
         children = np.zeros_like(heads)
         rewards = np.zeros_like(heads, dtype=np.float32)
-        subtree_masks = np.zeros([self.__batch_size, self.__length * 2], dtype=np.float32)
+        # subtree_masks = np.zeros([self.__batch_size, self.__length * 2], dtype=np.float32)
+        subtree_masks = np.zeros([self.__batch_size, self.__length+1], dtype=np.float32)
 
         for b in xrange(self.__batch_size):
             head = heads[b]
@@ -60,19 +61,22 @@ class Environment(object):
                 if child >= 0:
                     rewards[b] = self.__rewards[b, child, head]
                     self.__marks[b, child] = 0
-                    start = min(child, head) if is_lefts[b] else min(child, head) + self.__length
-                    end = max(child, head) + 1 if is_lefts[b] else max(child, head) + 1 + self.__length
-                    subtree_masks[b, start:end] = 1.0
+                    # start = min(child, head) if is_lefts[b] else min(child, head) + self.__length
+                    # end = max(child, head) + 1 if is_lefts[b] else max(child, head) + 1 + self.__length
+                    # subtree_masks[b, start:end] = 1.0
+                    subtree_masks[b, min(child, head):max(child, head)+1] = 1.0
                 else:
                     rewards[b] = NEGTIVE_REWARD
-                    end = self.__length - 1 if is_lefts[b] else -1
-                    subtree_masks[b, end] = 1.0
+                    # end = self.__length - 1 if is_lefts[b] else -1
+                    # subtree_masks[b, end] = 1.0
+                    subtree_masks[b, self.__length] = 1.0
             else:
                 rewards[b] = NEGTIVE_REWARD
                 heads[b] = -1
                 children[b] = -1
-                end = self.__length - 1 if is_lefts[b] else -1
-                subtree_masks[b, end] = 1.0
+                # end = self.__length - 1 if is_lefts[b] else -1
+                # subtree_masks[b, end] = 1.0
+                subtree_masks[b, self.__length] = 1.0
 
         indexes, lefts, rights = self.get_indexes()
         return rewards, heads, children, subtree_masks, indexes, lefts, rights
