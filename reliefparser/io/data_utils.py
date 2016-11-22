@@ -176,7 +176,7 @@ def iterate_batch(data, batch_size, shuffle=False):
         masks = np.zeros([bucket_size, bucket_length], dtype=np.float32)
 
         for i, inst in enumerate(data[bucket_id]):
-            wids, cid_seqs, pids, hids, tids = inst
+            wids, pids, hids, tids = inst
             inst_size = len(wids)
             # word ids
             wid_inputs[i, :inst_size] = wids
