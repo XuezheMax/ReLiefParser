@@ -198,14 +198,16 @@ class Decoder(object):
             flat_in_idx = base_idx + in_idx_t
             inp_vecs = tf.gather(tf.reshape(pad_memory, [-1, self.msize]), flat_in_idx)
 
-            weight_combine = tf.get_variable(name='weight_combine', shape=[2*self.msize, self.isize],
-                                             initializer=self.weight_intializer)
-            bias_combine   = tf.get_variable(name='bias_combine', shape=[self.isize],
-                                             initializer=tf.constant_initializer(value=0.0))
+            inp_t = tf.reshape(inp_vecs, [batch_size, 2*self.msize])
 
-            # TODO: discuss with Max about the model design here
-            inp_vecs = tf.reshape(inp_vecs, [batch_size, 2*self.msize])
-            inp_t = tf.tanh(tf.matmul(inp_vecs, weight_combine) + bias_combine)
+            # weight_combine = tf.get_variable(name='weight_combine', shape=[2*self.msize, self.isize],
+            #                                  initializer=self.weight_intializer)
+            # bias_combine   = tf.get_variable(name='bias_combine', shape=[self.isize],
+            #                                  initializer=tf.constant_initializer(value=0.0))
+
+            # # TODO: discuss with Max about the model design here
+            # inp_vecs = tf.reshape(inp_vecs, [batch_size, 2*self.msize])
+            # inp_t = tf.tanh(tf.matmul(inp_vecs, weight_combine) + bias_combine)
 
             # perform rnn step
             hid_t, state_t = self.rnn_cell(inp_t, state_tm)

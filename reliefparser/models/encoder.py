@@ -15,8 +15,8 @@ class Encoder(object):
 
         self.num_layer = kwargs.get('num_layer', 1)
 
-        self.rnn_cell_fw = tf.nn.rnn_cell.MultiRNNCell([rnn_class(num_units=self.hsize)] * self.num_layer)
-        self.rnn_cell_bw = tf.nn.rnn_cell.MultiRNNCell([rnn_class(num_units=self.hsize)] * self.num_layer)
+        self.rnn_cell_fw = [rnn_class(num_units=self.hsize)] * self.num_layer
+        self.rnn_cell_bw = [rnn_class(num_units=self.hsize)] * self.num_layer
 
         self.embed_initializer = tf.random_normal_initializer(mean=0.0, stddev=1.)
 
@@ -27,19 +27,27 @@ class Encoder(object):
                                          initializer=self.embed_initializer)
             embed  = tf.nn.embedding_lookup(embeddings, input)
             
-            # forward rnn
-            with tf.variable_scope('fw_rnn'):
-                hiddens_fw, final_state_fw = tf.nn.dynamic_rnn(self.rnn_cell_fw, embed, dtype=tf.float32)
+            final_state_fw, final_state_bw, hiddens = [], [], []
+            for lidx in range(self.num_layer):
+                layer_input = embed if lidx == 0 else hiddens[-1]
+                # forward rnn
+                with tf.variable_scope('fw_rnn_%d'%lidx):
+                    hiddens_fw_l, final_state_fw_l = tf.nn.dynamic_rnn(self.rnn_cell_fw[lidx], layer_input, dtype=tf.float32)
 
-            # backward rnn
-            with tf.variable_scope('bw_rnn'):
-                hiddens_bw, final_state_bw = tf.nn.dynamic_rnn(self.rnn_cell_bw, embed[:,-1::-1], dtype=tf.float32)
-                hiddens_bw = hiddens_bw[:,-1::-1]
+                # backward rnn
+                with tf.variable_scope('bw_rnn_%d'%lidx):
+                    hiddens_bw_l, final_state_bw_l = tf.nn.dynamic_rnn(self.rnn_cell_bw[lidx], layer_input[:,-1::-1], dtype=tf.float32)
+                    hiddens_bw_l = hiddens_bw_l[:,-1::-1]
 
-            # concatenate
-            hiddens = tf.concat(2, [hiddens_fw, hiddens_bw])
+                # concatenate
+                hiddens_l = tf.concat(2, [hiddens_fw_l, hiddens_bw_l])
 
-        return hiddens, final_state_fw, final_state_bw
+                # append state
+                hiddens.append(hiddens_l)
+                final_state_fw.append(final_state_fw_l)
+                final_state_bw.append(final_state_bw_l)
+
+        return hiddens[-1], final_state_fw, final_state_bw
 
 
 #### test script
